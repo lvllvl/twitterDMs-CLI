@@ -3,6 +3,9 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+
+use futures::executor::block_on; 
+
 use std::{error::Error, io};
 use tui::{
     backend::{Backend, CrosstermBackend},
@@ -13,24 +16,8 @@ use tui::{
 
 fn main() -> Result<(), Box<dyn Error>> {
 
-    async {
-
-        // token can be given to any egg_mode method that asks for a token
-        // user_id and screen_name refer to the user who signed in
-        let con_token = egg_mode::KeyPair::new("consumer key", "consumer secret");
-        // "oob" is needed for PIN-based auth; see docs for `request_token` for more info
-        let request_token = egg_mode::auth::request_token( &con_token, "oob")?;
-        let auth_url = egg_mode::auth::authorize_url(&request_token);
-        println!( "{}", auth_url ); 
-        let mut line = String::new(); 
-        // give auth_url to the user, they can sign in to Twitter and accept your app's permissions.
-        // they'll receive a PIN in return, they need to give this to your application
-        let verifier = std::io::stdin().read_line(&mut line )?; // verifier PIN 
-
-        // note this consumes con_token; if you want to sign in multiple accounts, clone it here
-        let (token, user_id, screen_name) =
-            egg_mode::auth::access_token(con_token, &request_token, verifier)?;
-    }; 
+    let future = async_twitter_login();
+    block_on( future ); 
 
     // setup terminal
     enable_raw_mode()?;
@@ -54,10 +41,31 @@ fn main() -> Result<(), Box<dyn Error>> {
     if let Err(err) = res {
         println!("{:?}", err)
     }
-
-
     Ok(())
 }
+
+async fn async_twitter_login() {
+
+    // token can be given to any egg_mode method that asks for a token
+    // user_id and screen_name refer to the user who signed in
+    let con_token = egg_mode::KeyPair::new("consumer key", "consumer secret");
+    // "oob" is needed for PIN-based auth; see docs for `request_token` for more info
+    let request_token = egg_mode::auth::request_token( &con_token, "oob").await.unwrap();
+    let auth_url = egg_mode::auth::authorize_url(&request_token);
+    println!( "{}", auth_url ); 
+
+    let mut buffer = String::new(); 
+    // give auth_url to the user, they can sign in to Twitter and accept your app's permissions.
+    // they'll receive a PIN in return, they need to give this to your application
+    // let verifier = std::io::stdin().read_line(&mut buffer ); // verifier PIN
+    let verifier = "12334"; // verifier PIN
+
+    // note this consumes con_token; if you want to sign in multiple accounts, clone it here
+    let (token, user_id, screen_name) =
+        egg_mode::auth::access_token(con_token, &request_token, verifier ).await.unwrap();
+
+}
+
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>) -> io::Result<()> {
     loop {
@@ -102,6 +110,6 @@ fn ui<B: Backend>(f: &mut Frame<B>) {
     let block = Block::default().title("Messages").borders(Borders::ALL);
     f.render_widget(block, right_chunks[0]);
     
-    let block = Block::default().title("--").borders(Borders::ALL);
+    let block = Block::default().title("Enter Text Below").borders(Borders::ALL);
     f.render_widget(block, right_chunks[1]);
 }
